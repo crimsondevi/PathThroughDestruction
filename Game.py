@@ -2,7 +2,6 @@ import pygame
 import numpy as np
 import pod
 
-
 # Set up the display
 screen_width, screen_height = 1000, 600
 sub_screen = 600
@@ -64,6 +63,7 @@ class Player(pygame.sprite.Sprite):
 
     def __init__(self, pos):
         pygame.sprite.Sprite.__init__(self)
+        self.start_pos = pos
         self.image = pygame.Surface((16, 16))
         self.image.fill('red')
         self.rect = self.image.get_rect(topleft=pos)
@@ -100,34 +100,34 @@ class Player(pygame.sprite.Sprite):
     def update(self):
         self.get_input()
 
+    def turn_green(self):
+        self.image.fill('green')
+
+    def reset(self):
+        self.rect.x = self.start_pos[0]
+        self.rect.y = self.start_pos[1]
+        self.image.fill('red')
+
 
 # Define grid properties
 grid_size = 10  # N
 cell_size = screen_width // grid_size
 
-
-grid = [
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-    [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-]
-
-
 class Level:
     def __init__(self, surface):
+        self.level_number = 1;
         self.display_surface = surface
-        self.grid = np.load('grid.npy')
+        self.grid = self.get_level_grid()
         self.tile_size = sub_screen / self.grid.shape[0]
         self.player = pygame.sprite.GroupSingle()
         self.tiles = pygame.sprite.Group()
         self.setup_level()
+        self.player_max_x = sub_screen - self.player.sprite.rect.width
+        self.level_complete = False
+
+    def get_level_grid(self):
+        level_file = 'level{}.npy'.format(self.level_number)
+        return np.load(level_file)
 
     def setup_level(self):
         for y, column in enumerate(self.grid):
@@ -146,7 +146,9 @@ class Level:
 
     def horizontal_movement_collision(self):
         player = self.player.sprite
-        player.rect.x += player.direction.x * player.speed
+        x_inc = player.direction.x * player.speed
+        max_x = self.player_max_x
+        player.rect.x = max(0, min(max_x, player.rect.x + x_inc))
 
         for sprite in self.tiles.sprites():
             if sprite.state == 0:
@@ -176,9 +178,8 @@ class Level:
 
     def check_win(self):
         player = self.player.sprite
-        # TODO: Create proper win condition and screen
-        if player.rect.x > 600:
-            print("win")
+        if player.rect.x == self.player_max_x:
+            return True
 
     def get_grid(self):
         return self.grid
@@ -187,11 +188,15 @@ class Level:
         self.grid = grid
 
     def reset_grid(self):
-        self.grid = np.load('grid.npy')
+        self.grid = self.get_level_grid()
         player = self.player.sprite
-        player.rect.x = 0
-        player.rect.y = self.tile_size * 9
+        player.reset()
         self.update_level()
+
+    def load_next_level(self):
+        self.level_number += 1
+        self.level_complete = False
+        self.reset_grid()
 
     def run(self):
         self.tiles.draw(self.display_surface)
@@ -201,7 +206,12 @@ class Level:
         self.vertical_movement_collision()
         self.player.draw(self.display_surface)
 
-        self.check_win()
+        # TODO: Create proper win condition and screen
+        if not self.level_complete and self.check_win():
+            print("win")
+            player = self.player.sprite
+            player.turn_green()
+            self.level_complete = True
 
 
 class TilePalette:
@@ -244,9 +254,10 @@ class Button:
         surface.blit(text, text_rect)
 
 
+ResetButton = Button(700, 310, 200, 50, "Reset", (0, 0, 255))
+NextButton = Button(700, 380, 200, 50, "Next Level", (0, 255, 255))
 ApplyInference = Button(700, 450, 200, 50, "Apply", (0, 255, 0))
 TrainButton = Button(700, 520, 200, 50, "Train", (255, 0, 0))
-ResetButton = Button(700, 300, 200, 50, "Reset", (0, 0, 255))
 
 
 palette = TilePalette()
@@ -258,7 +269,7 @@ model = pod.PoD()
 # Game loop
 current_level = None
 count = 0
-COUNT = 60
+COUNT = 30
 running = True
 
 while running:
@@ -271,6 +282,9 @@ while running:
                 pos = pygame.mouse.get_pos()
                 if ResetButton.rect.collidepoint(pos):
                     level.reset_grid()
+                
+                if level.level_complete and NextButton.rect.collidepoint(pos):
+                    level.load_next_level()
 
                 elif ApplyInference.rect.collidepoint(pos):
                     level.reset_grid()
@@ -278,9 +292,15 @@ while running:
                     count = COUNT
 
                 elif TrainButton.rect.collidepoint(pos):
+                    TrainButton.color = (100, 100, 100)
+                    TrainButton.draw(screen)
+                    pygame.display.update()
                     sample = palette.grid
                     model.add_goal(sample)
                     model.train()
+                    TrainButton.color = (255, 0, 0)
+                    TrainButton.draw(screen)
+                    pygame.display.update()
 
                 else:
                     for sprite in palette.palette_group.sprites():
@@ -298,7 +318,7 @@ while running:
 
     if count > 0:
         count -= 1
-        new_level = model.infer(current_level, rounds=200)
+        new_level = model.infer(current_level, rounds=150)
         current_level = new_level
         level.grid = new_level
         level.update_level()
@@ -306,6 +326,7 @@ while running:
 
     # Render Buttons and Palette
     ResetButton.draw(screen)
+    if level.level_complete: NextButton.draw(screen)
     ApplyInference.draw(screen)
     TrainButton.draw(screen)
     palette.palette_group.draw(screen)
@@ -318,4 +339,3 @@ while running:
 
 # Quit the game
 pygame.quit()
-

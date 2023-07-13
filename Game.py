@@ -2,7 +2,6 @@ import pygame
 import numpy as np
 import pod
 
-
 # Set up the display
 screen_width, screen_height = 1000, 600
 sub_screen = 600
@@ -114,31 +113,21 @@ class Player(pygame.sprite.Sprite):
 grid_size = 10  # N
 cell_size = screen_width // grid_size
 
-
-grid = [
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 1, 1, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
-    [0, 0, 0, 0, 1, 1, 0, 0, 0, 0],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-]
-
-
 class Level:
     def __init__(self, surface):
+        self.level_number = 1;
         self.display_surface = surface
-        self.grid = np.load('grid.npy')
+        self.grid = self.get_level_grid()
         self.tile_size = sub_screen / self.grid.shape[0]
         self.player = pygame.sprite.GroupSingle()
         self.tiles = pygame.sprite.Group()
         self.setup_level()
         self.player_max_x = sub_screen - self.player.sprite.rect.width
         self.level_complete = False
+
+    def get_level_grid(self):
+        level_file = 'level{}.npy'.format(self.level_number)
+        return np.load(level_file)
 
     def setup_level(self):
         for y, column in enumerate(self.grid):
@@ -199,10 +188,15 @@ class Level:
         self.grid = grid
 
     def reset_grid(self):
-        self.grid = np.load('grid.npy')
+        self.grid = self.get_level_grid()
         player = self.player.sprite
         player.reset()
         self.update_level()
+
+    def load_next_level(self):
+        self.level_number += 1
+        self.level_complete = False
+        self.reset_grid()
 
     def run(self):
         self.tiles.draw(self.display_surface)
@@ -260,9 +254,10 @@ class Button:
         surface.blit(text, text_rect)
 
 
+ResetButton = Button(700, 310, 200, 50, "Reset", (0, 0, 255))
+NextButton = Button(700, 380, 200, 50, "Next Level", (0, 255, 255))
 ApplyInference = Button(700, 450, 200, 50, "Apply", (0, 255, 0))
 TrainButton = Button(700, 520, 200, 50, "Train", (255, 0, 0))
-ResetButton = Button(700, 300, 200, 50, "Reset", (0, 0, 255))
 
 
 palette = TilePalette()
@@ -287,6 +282,9 @@ while running:
                 pos = pygame.mouse.get_pos()
                 if ResetButton.rect.collidepoint(pos):
                     level.reset_grid()
+                
+                if level.level_complete and NextButton.rect.collidepoint(pos):
+                    level.load_next_level()
 
                 elif ApplyInference.rect.collidepoint(pos):
                     level.reset_grid()
@@ -328,6 +326,7 @@ while running:
 
     # Render Buttons and Palette
     ResetButton.draw(screen)
+    if level.level_complete: NextButton.draw(screen)
     ApplyInference.draw(screen)
     TrainButton.draw(screen)
     palette.palette_group.draw(screen)
